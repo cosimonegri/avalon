@@ -29,6 +29,9 @@ describe("BlobGameStore", () => {
       async list() {
         return { blobs: [{ key: game.code, etag }], directories: [] };
       },
+      async getMetadata() {
+        return { metadata: { expiresAt: game.expiresAt }, etag };
+      },
       async setJSON(_key: string, value: unknown, options: { onlyIfMatch?: string }) {
         conditionalEtag = options.onlyIfMatch ?? "";
         if (conditionalEtag !== etag) return { modified: false };
@@ -48,5 +51,38 @@ describe("BlobGameStore", () => {
     next.players.push({ id: "player-2", name: "Gawain", tokenHash: "joined-hash", seat: 2 });
     await expect(store.replace(next, document!.etag)).resolves.toBe(true);
     expect(conditionalEtag).toBe('"local-etag-1"');
+  });
+
+  it("deletes expired entries in bounded cleanup batches", async () => {
+    const deleted: string[] = [];
+    const metadata = new Map<string, number | undefined>([
+      ["EXPIRE", 999],
+      ["FRESH1", 2_000],
+      ["LEGACY", undefined],
+    ]);
+    const cleanupStore = {
+      async *list() {
+        yield {
+          blobs: Array.from(metadata.keys(), (key) => ({ key, etag: `etag-${key}` })),
+          directories: [],
+        };
+      },
+      async getMetadata(key: string) {
+        return { metadata: { expiresAt: metadata.get(key) }, etag: `etag-${key}` };
+      },
+      async delete(key: string) {
+        deleted.push(key);
+      },
+      async getWithMetadata() {
+        return null;
+      },
+      async setJSON() {
+        return { modified: true };
+      },
+    };
+
+    const store = new BlobGameStore(cleanupStore as never);
+    await expect(store.deleteExpired(1_000)).resolves.toEqual({ checked: 3, deleted: 1 });
+    expect(deleted).toEqual(["EXPIRE"]);
   });
 });

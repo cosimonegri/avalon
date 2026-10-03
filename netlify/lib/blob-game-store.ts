@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 import type { GameDocument, StoredGame } from "../../src/shared/game";
 import type { GameStore } from "./game-service";
 
-type BlobStore = Pick<ReturnType<typeof getStore>, "delete" | "getWithMetadata" | "list" | "setJSON">;
+type BlobStore = Pick<ReturnType<typeof getStore>, "delete" | "getMetadata" | "getWithMetadata" | "list" | "setJSON">;
 
 export class BlobGameStore implements GameStore {
   constructor(
@@ -43,5 +43,30 @@ export class BlobGameStore implements GameStore {
 
   async delete(code: string) {
     await this.store.delete(code);
+  }
+
+  async deleteExpired(now = Date.now(), limit = 200) {
+    let checked = 0;
+    let deleted = 0;
+    const pages = this.store.list({ paginate: true });
+
+    for await (const page of pages) {
+      const candidates = page.blobs.slice(0, Math.max(0, limit - checked));
+      for (let index = 0; index < candidates.length; index += 20) {
+        const batch = candidates.slice(index, index + 20);
+        const results = await Promise.all(batch.map(async (blob) => {
+          const result = await this.store.getMetadata(blob.key);
+          const expiresAt = result?.metadata.expiresAt;
+          if (typeof expiresAt !== "number" || expiresAt > now) return false;
+          await this.store.delete(blob.key);
+          return true;
+        }));
+        checked += batch.length;
+        deleted += results.filter(Boolean).length;
+      }
+      if (checked >= limit) break;
+    }
+
+    return { checked, deleted };
   }
 }

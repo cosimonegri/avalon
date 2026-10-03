@@ -15,10 +15,6 @@ export default async function handler(request: Request) {
 export async function handleRequest(request: Request, service: GameService) {
   const segments = new URL(request.url).pathname.split("/").filter(Boolean);
   try {
-    if (request.method === "POST" && segments.length === 2) {
-      const body = await requestBody(request);
-      return json(await service.create(body.name), 201);
-    }
     const code = segments[2] ?? "";
     if (request.method === "GET" && segments.length === 3) {
       return json(await service.view(code, bearerToken(request), request.headers.get("x-host-token") ?? ""));
@@ -26,6 +22,12 @@ export async function handleRequest(request: Request, service: GameService) {
     if (request.method === "POST" && segments[3] === "join" && segments.length === 4) {
       const body = await requestBody(request);
       return json(await service.join(code, body.name), 201);
+    }
+    if (request.method === "DELETE" && segments[3] === "players" && segments.length === 5) {
+      const playerToken = bearerToken(request);
+      const hostToken = request.headers.get("x-host-token") ?? "";
+      await service.removePlayer(code, playerToken, hostToken, segments[4]);
+      return json(await service.view(code, playerToken, hostToken));
     }
     if (request.method === "POST" && segments[3] === "start" && segments.length === 4) {
       const body = await requestBody(request);
@@ -66,5 +68,10 @@ function json(value: unknown, status = 200) {
 }
 
 export const config: Config = {
-  path: ["/api/games", "/api/games/*"],
+  path: "/api/games/*",
+  rateLimit: {
+    windowLimit: 300,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"],
+  },
 };

@@ -37,6 +37,41 @@ describe("GameService", () => {
     expect(new Set((view.players as Array<{ name: string }>).map((player) => player.name)).size).toBe(10);
   });
 
+  it("lets the host remove another player only while the lobby is open", async () => {
+    const { service, store } = testService();
+    const created = await service.create("Arthur");
+    const gawain = await service.join(created.code, "Gawain");
+    const tristan = await service.join(created.code, "Tristan");
+    const before = await service.view(created.code, created.playerToken, created.hostToken);
+    const players = before.players as Array<{ id: string; name: string }>;
+    const gawainId = players.find((player) => player.name === "Gawain")!.id;
+    const hostId = players.find((player) => player.name === "Arthur")!.id;
+
+    await expect(
+      service.removePlayer(created.code, gawain.playerToken, "wrong-host-token", gawainId),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      service.removePlayer(created.code, created.playerToken, created.hostToken, hostId),
+    ).rejects.toMatchObject({ status: 400 });
+
+    await service.removePlayer(created.code, created.playerToken, created.hostToken, gawainId);
+    await expect(service.view(created.code, gawain.playerToken)).rejects.toMatchObject({ status: 401 });
+    const stored = await store.read(created.code);
+    expect(stored?.game.players.map((player) => [player.name, player.seat])).toEqual([
+      ["Arthur", 1],
+      ["Tristan", 2],
+    ]);
+
+    for (const name of ["Iseult", "Galahad", "Kay"]) await service.join(created.code, name);
+    await service.start(created.code, created.playerToken, created.hostToken, ["merlin", "assassin"]);
+    const assigned = await service.view(created.code, created.playerToken, created.hostToken);
+    const tristanId = (assigned.players as Array<{ id: string; name: string }>).find((player) => player.name === "Tristan")!.id;
+    await expect(
+      service.removePlayer(created.code, created.playerToken, created.hostToken, tristanId),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(service.view(created.code, tristan.playerToken)).resolves.toHaveProperty("roleCard");
+  });
+
   it("rejects non-host role assignment and duplicate assignment", async () => {
     const { service } = testService();
     const created = await service.create("Arthur");

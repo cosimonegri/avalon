@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handleCreateRequest } from "../netlify/functions/create-game.mts";
 import { handleRequest } from "../netlify/functions/games.mts";
 import { GameService } from "../netlify/lib/game-service";
 import { MemoryGameStore } from "./memory-game-store";
@@ -17,7 +18,10 @@ async function request(
   path: string,
   init: RequestInit = {},
 ) {
-  const response = await handleRequest(new Request(`http://localhost${path}`, init), service);
+  const webRequest = new Request(`http://localhost${path}`, init);
+  const response = path === "/api/games"
+    ? await handleCreateRequest(webRequest, service)
+    : await handleRequest(webRequest, service);
   return { response, body: (await response.json()) as Record<string, unknown> };
 }
 
@@ -46,6 +50,23 @@ describe("games Netlify Function", () => {
       expect(joined.response.status).toBe(201);
       joinedTokens.push(joined.body.playerToken as string);
     }
+
+    const lobby = await request(service, `/api/games/${code}`, {
+      headers: { authorization: `Bearer ${playerToken}`, "x-host-token": hostToken },
+    });
+    const removable = (lobby.body.players as Array<{ id: string; name: string }>).find((player) => player.name === "Galahad")!;
+    const removed = await request(service, `/api/games/${code}/players/${removable.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${playerToken}`, "x-host-token": hostToken },
+    });
+    expect(removed.response.status).toBe(200);
+    expect((removed.body.players as Array<{ name: string }>).map((player) => player.name)).not.toContain("Galahad");
+    const replacement = await request(service, `/api/games/${code}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Kay" }),
+    });
+    expect(replacement.response.status).toBe(201);
 
     const started = await request(service, `/api/games/${code}/start`, {
       method: "POST",

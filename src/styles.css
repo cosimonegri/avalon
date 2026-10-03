@@ -95,6 +95,10 @@ a { color: inherit; text-decoration: none; }
 .player-row > span { flex: 1; font-weight: 700; }
 .player-row small { color: #7690a0; }
 .player-row svg { color: #e5b95d; }
+.remove-player { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #d2645c33; border-radius: 8px; background: #d2645c0b; cursor: pointer; }
+.remove-player:hover:not(:disabled) { background: #d2645c1a; border-color: #d2645c66; }
+.remove-player:disabled { cursor: wait; opacity: .45; }
+.remove-player svg { color: #df7a72; }
 .empty-seat { border-style: dashed; color: #5d7788; justify-content: center; }
 .invite-panel { text-align: center; grid-row: span 1; }
 .invite-panel h2 { margin-bottom: 18px; }

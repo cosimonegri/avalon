@@ -95,6 +95,30 @@ export class GameService {
     return { code, playerToken };
   }
 
+  async removePlayer(codeInput: string, playerToken: string, hostToken: string, targetPlayerId: string) {
+    const code = normalizedRoomCode(codeInput);
+    const playerTokenHash = await hashToken(requiredToken(playerToken));
+    const hostTokenHash = await hashToken(requiredToken(hostToken));
+    if (!targetPlayerId) throw new GameError("Choose a player to remove.", 400);
+
+    return this.update(code, (game) => {
+      const requester = game.players.find((candidate) => candidate.tokenHash === playerTokenHash);
+      if (!requester || game.hostTokenHash !== hostTokenHash) {
+        throw new GameError("Only the room host can remove players.", 403);
+      }
+      if (game.status !== "lobby") throw new GameError("Players can only be removed from an open lobby.", 409);
+      const targetIndex = game.players.findIndex((candidate) => candidate.id === targetPlayerId);
+      if (targetIndex < 0) throw new GameError("That player is no longer in this lobby.", 404);
+      if (targetIndex === 0 || game.players[targetIndex].id === requester.id) {
+        throw new GameError("The room host cannot be removed.", 400);
+      }
+      game.players.splice(targetIndex, 1);
+      game.players.forEach((candidate, index) => {
+        candidate.seat = index + 1;
+      });
+    });
+  }
+
   async start(codeInput: string, playerToken: string, hostToken: string, roleInput: unknown) {
     const code = normalizedRoomCode(codeInput);
     const playerTokenHash = await hashToken(requiredToken(playerToken));

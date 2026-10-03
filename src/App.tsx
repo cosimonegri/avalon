@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Check, Copy, Crown, Eye, EyeOff, RefreshCw, RotateCcw, Shield, Sparkles, Swords, Users } from "lucide-react";
+import { Check, Copy, Crown, Eye, EyeOff, RefreshCw, RotateCcw, Shield, Sparkles, Swords, UserMinus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -26,14 +26,25 @@ type RoomState = {
   roleCard?: RoleCard;
 };
 
+class RequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+  }
+}
+
 function storageKey(code: string, type: "player" | "host") {
   return `round-table:${normalizeCode(code)}:${type}`;
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
-  const payload = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Something went wrong.");
+  const payload = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) {
+    const message = response.status === 429
+      ? "Too many requests. Wait a minute and try again."
+      : payload.error || "Something went wrong.";
+    throw new RequestError(message, response.status);
+  }
   return payload;
 }
 
@@ -123,10 +134,21 @@ function Landing({ initialCode, onEnter }: { initialCode: string; onEnter: (code
   );
 }
 
-function Lobby({ state, tokens, onRefresh }: { state: RoomState; tokens: { player: string; host: string }; onRefresh: () => Promise<RoomState | null> }) {
+function Lobby({
+  state,
+  tokens,
+  onRefresh,
+  onRemovePlayer,
+}: {
+  state: RoomState;
+  tokens: { player: string; host: string };
+  onRefresh: () => Promise<RoomState | null>;
+  onRemovePlayer: (playerId: string) => Promise<void>;
+}) {
   const [roles, setRoles] = useState<RoleId[]>(state.room.selectedRoles.length ? state.room.selectedRoles : DEFAULT_ROLES);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [removingPlayerId, setRemovingPlayerId] = useState("");
   const [error, setError] = useState("");
   const inviteUrl = typeof window === "undefined" ? "" : `${window.location.origin}/?room=${state.room.code}`;
 
@@ -157,6 +179,19 @@ function Lobby({ state, tokens, onRefresh }: { state: RoomState; tokens: { playe
     }
   };
 
+  const removePlayer = async (player: Player) => {
+    if (!window.confirm(`Remove ${player.name} from this lobby?`)) return;
+    setRemovingPlayerId(player.id);
+    setError("");
+    try {
+      await onRemovePlayer(player.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not remove that player.");
+    } finally {
+      setRemovingPlayerId("");
+    }
+  };
+
   return (
     <main className="room-shell">
       <RoomHeader code={state.room.code} />
@@ -170,6 +205,18 @@ function Lobby({ state, tokens, onRefresh }: { state: RoomState; tokens: { playe
                 <span>{player.name}</span>
                 {player.id === state.player.id && <small>You</small>}
                 {index === 0 && <Crown size={15} aria-label="Host" />}
+                {state.isHost && index > 0 && (
+                  <button
+                    type="button"
+                    className="remove-player"
+                    aria-label={`Remove ${player.name}`}
+                    title={`Remove ${player.name}`}
+                    disabled={Boolean(removingPlayerId)}
+                    onClick={() => void removePlayer(player)}
+                  >
+                    <UserMinus size={16} />
+                  </button>
+                )}
               </div>
             ))}
             {Array.from({ length: Math.max(0, 5 - state.players.length) }).map((_, index) => <div className="empty-seat" key={index}>Open seat</div>)}
@@ -227,6 +274,19 @@ function RoleReveal({
   const [action, setAction] = useState<"check" | "reset" | null>(null);
   const [notice, setNotice] = useState("");
   const card = state.roleCard!;
+
+  useEffect(() => {
+    const reseal = () => setRevealed(false);
+    const resealWhenHidden = () => document.hidden && reseal();
+    document.addEventListener("visibilitychange", resealWhenHidden);
+    window.addEventListener("blur", reseal);
+    window.addEventListener("pagehide", reseal);
+    return () => {
+      document.removeEventListener("visibilitychange", resealWhenHidden);
+      window.removeEventListener("blur", reseal);
+      window.removeEventListener("pagehide", reseal);
+    };
+  }, []);
 
   const checkForNextGame = async () => {
     setAction("check");
@@ -327,6 +387,7 @@ export default function Home() {
       return room;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the room.");
+      if (cause instanceof RequestError && [401, 404, 410].includes(cause.status)) setState(null);
       return null;
     }
   }, [code, tokens]);
@@ -334,6 +395,15 @@ export default function Home() {
   const resetLobby = useCallback(async () => {
     const room = await jsonRequest<RoomState>(`/api/games/${code}/reset`, {
       method: "POST",
+      headers: { authorization: `Bearer ${tokens.player}`, "x-host-token": tokens.host },
+    });
+    setState(room);
+    setError("");
+  }, [code, tokens]);
+
+  const removePlayer = useCallback(async (playerId: string) => {
+    const room = await jsonRequest<RoomState>(`/api/games/${code}/players/${playerId}`, {
+      method: "DELETE",
       headers: { authorization: `Bearer ${tokens.player}`, "x-host-token": tokens.host },
     });
     setState(room);
@@ -391,5 +461,5 @@ export default function Home() {
   if (error && !state) return <main className="loading-screen"><Mark /><p>{error}</p><Button variant="outline" onClick={() => { localStorage.removeItem(storageKey(code, "player")); localStorage.removeItem(storageKey(code, "host")); setTokens({ player: "", host: "" }); setError(""); }}>Join again</Button></main>;
   if (!state) return <main className="loading-screen"><Mark /><span>Finding your seat…</span></main>;
   if (state.room.status === "assigned" && state.roleCard) return <RoleReveal state={state} onCheck={refresh} onReset={resetLobby} />;
-  return <Lobby state={state} tokens={tokens} onRefresh={refresh} />;
+  return <Lobby state={state} tokens={tokens} onRefresh={refresh} onRemovePlayer={removePlayer} />;
 }
