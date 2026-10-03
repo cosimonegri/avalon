@@ -145,7 +145,12 @@ function Landing({
           <Mark />
           <span>AVALON ROLE COMPANION</span>
         </a>
-        <span className="companion-label">Avalon role companion</span>
+        <a
+          className="companion-label"
+          href="https://github.com/cosimonegri/avalon"
+        >
+          GitHub
+        </a>
       </header>
 
       <section className="landing-grid">
@@ -864,6 +869,12 @@ export default function Home() {
           }}
         >
           Join again
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => window.location.assign("/")}
+        >
+          Go back to homepage
         </Button>
       </main>
     );
