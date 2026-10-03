@@ -60,7 +60,7 @@ class RequestError extends Error {
 }
 
 function storageKey(code: string, type: "player" | "host") {
-  return `round-table:${normalizeCode(code)}:${type}`;
+  return `avalon-role-companion:${normalizeCode(code)}:${type}`;
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -141,9 +141,9 @@ function Landing({
   return (
     <main className="landing-shell">
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Round Table home">
+        <a className="brand" href="/" aria-label="Avalon Role Companion home">
           <Mark />
-          <span>ROUND TABLE</span>
+          <span>AVALON ROLE COMPANION</span>
         </a>
         <span className="companion-label">Avalon role companion</span>
       </header>
@@ -483,9 +483,9 @@ function Lobby({
 function RoomHeader({ code }: { code: string }) {
   return (
     <header className="site-header room-header">
-      <a className="brand" href="/" aria-label="Round Table home">
+      <a className="brand" href="/" aria-label="Avalon Role Companion home">
         <Mark />
-        <span>ROUND TABLE</span>
+        <span>AVALON ROLE COMPANION</span>
       </a>
       <div className="header-room">
         <span>ROOM</span>
@@ -844,7 +844,7 @@ export default function Home() {
     return (
       <main className="loading-screen">
         <Mark />
-        <span>Opening the round table…</span>
+        <span>Opening Avalon Role Companion</span>
       </main>
     );
   if (!tokens.player)

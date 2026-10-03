@@ -1,6 +1,6 @@
-# Round Table
+# Avalon Role Companion
 
-A narrator-free companion for assigning roles at the start of a game of *The Resistance: Avalon*. A host creates a room, players join with a link, QR code, or six-character code, and each player privately reveals only their own role and permitted information.
+A narrator-free companion for assigning roles at the start of a game of _The Resistance: Avalon_. A host creates a room, players join with a link, QR code, or six-character code, and each player privately reveals only their own role and permitted information.
 
 ## What it does
 
