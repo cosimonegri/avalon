@@ -124,6 +124,25 @@ export class GameService {
     });
   }
 
+  async reset(codeInput: string, playerToken: string, hostToken: string) {
+    const code = normalizedRoomCode(codeInput);
+    const playerTokenHash = await hashToken(requiredToken(playerToken));
+    const hostTokenHash = await hashToken(requiredToken(hostToken));
+
+    return this.update(code, (game) => {
+      const player = game.players.find((candidate) => candidate.tokenHash === playerTokenHash);
+      if (!player || game.hostTokenHash !== hostTokenHash) {
+        throw new GameError("Only the room host can reset the lobby.", 403);
+      }
+      if (game.status !== "assigned") throw new GameError("The lobby is already open.", 409);
+      game.players.forEach((candidate) => {
+        delete candidate.role;
+      });
+      game.status = "lobby";
+      game.expiresAt = this.now() + GAME_TTL_MS;
+    });
+  }
+
   async view(codeInput: string, playerToken: string, hostToken = "") {
     const code = normalizedRoomCode(codeInput);
     const document = await this.readLiveGame(code);

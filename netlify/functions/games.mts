@@ -34,6 +34,12 @@ export async function handleRequest(request: Request, service: GameService) {
       await service.start(code, playerToken, hostToken, body.roles);
       return json(await service.view(code, playerToken, hostToken));
     }
+    if (request.method === "POST" && segments[3] === "reset" && segments.length === 4) {
+      const playerToken = bearerToken(request);
+      const hostToken = request.headers.get("x-host-token") ?? "";
+      await service.reset(code, playerToken, hostToken);
+      return json(await service.view(code, playerToken, hostToken));
+    }
     return json({ error: "Route not found." }, 404);
   } catch (error) {
     if (error instanceof GameError) return json({ error: error.message }, error.status);

@@ -65,6 +65,29 @@ describe("games Netlify Function", () => {
     expect(joinedView.response.status).toBe(200);
     expect(joinedView.body.roleCard).toBeDefined();
     expect((joinedView.body.players as Array<Record<string, unknown>>).every((player) => !("role" in player))).toBe(true);
+
+    const forbiddenReset = await request(service, `/api/games/${code}/reset`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${joinedTokens[0]}`,
+        "x-host-token": "wrong-host-token",
+      },
+    });
+    expect(forbiddenReset.response.status).toBe(403);
+
+    const reset = await request(service, `/api/games/${code}/reset`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${playerToken}`,
+        "x-host-token": hostToken,
+      },
+    });
+    expect(reset.response.status).toBe(200);
+    expect(reset.body).toMatchObject({
+      room: { code, status: "lobby", playerCount: 5 },
+      isHost: true,
+    });
+    expect(reset.body).not.toHaveProperty("roleCard");
   });
 
   it("returns safe client errors for malformed input and unknown routes", async () => {

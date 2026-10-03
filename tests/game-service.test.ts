@@ -94,6 +94,53 @@ describe("GameService", () => {
     expect(new Set(assassin.card.intel)).toEqual(new Set([morgana.playerName, mordred.playerName]));
   });
 
+  it("lets only the host reset the same roster for another game", async () => {
+    let now = 1_000;
+    const { service, store } = testService(() => now);
+    const created = await service.create("Arthur");
+    const seats = [{ name: "Arthur", token: created.playerToken }];
+    for (const name of ["Gawain", "Tristan", "Iseult", "Galahad"]) {
+      const joined = await service.join(created.code, name);
+      seats.push({ name, token: joined.playerToken });
+    }
+    const roles = ["merlin", "percival", "assassin", "morgana"] as const;
+    await service.start(created.code, created.playerToken, created.hostToken, [...roles]);
+
+    await expect(
+      service.reset(created.code, seats[1].token, "wrong-host-token"),
+    ).rejects.toMatchObject({ status: 403 });
+
+    now = 50_000;
+    await service.reset(created.code, created.playerToken, created.hostToken);
+    const resetView = await service.view(created.code, created.playerToken, created.hostToken);
+    expect(resetView.room).toMatchObject({
+      status: "lobby",
+      selectedRoles: [...roles],
+      playerCount: 5,
+      expiresAt: now + GAME_TTL_MS,
+    });
+    expect(resetView).not.toHaveProperty("roleCard");
+    const stored = await store.read(created.code);
+    expect(stored?.game.players.every((player) => player.role === undefined)).toBe(true);
+
+    for (const seat of seats) {
+      await expect(service.view(created.code, seat.token)).resolves.toMatchObject({
+        room: { status: "lobby" },
+      });
+    }
+
+    await service.start(created.code, created.playerToken, created.hostToken, [...roles]);
+    await expect(service.view(created.code, created.playerToken)).resolves.toHaveProperty("roleCard");
+  });
+
+  it("does not reset a lobby that has not assigned roles", async () => {
+    const { service } = testService();
+    const created = await service.create("Arthur");
+    await expect(
+      service.reset(created.code, created.playerToken, created.hostToken),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
   it("reports validation errors with safe status codes", async () => {
     const { service } = testService();
     await expect(service.create(" ")).rejects.toBeInstanceOf(GameError);

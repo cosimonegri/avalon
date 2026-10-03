@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Check, Copy, Crown, Eye, EyeOff, Shield, Sparkles, Swords, Users } from "lucide-react";
+import { Check, Copy, Crown, Eye, EyeOff, RefreshCw, RotateCcw, Shield, Sparkles, Swords, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -123,7 +123,7 @@ function Landing({ initialCode, onEnter }: { initialCode: string; onEnter: (code
   );
 }
 
-function Lobby({ state, tokens, onRefresh }: { state: RoomState; tokens: { player: string; host: string }; onRefresh: () => Promise<void> }) {
+function Lobby({ state, tokens, onRefresh }: { state: RoomState; tokens: { player: string; host: string }; onRefresh: () => Promise<RoomState | null> }) {
   const [roles, setRoles] = useState<RoleId[]>(state.room.selectedRoles.length ? state.room.selectedRoles : DEFAULT_ROLES);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -214,37 +214,83 @@ function RoomHeader({ code }: { code: string }) {
   return <header className="site-header room-header"><a className="brand" href="/" aria-label="Round Table home"><Mark /><span>ROUND TABLE</span></a><div className="header-room"><span>ROOM</span><strong>{code}</strong></div></header>;
 }
 
-function RoleReveal({ state }: { state: RoomState }) {
+function RoleReveal({
+  state,
+  onCheck,
+  onReset,
+}: {
+  state: RoomState;
+  onCheck: () => Promise<RoomState | null>;
+  onReset: () => Promise<void>;
+}) {
   const [revealed, setRevealed] = useState(false);
+  const [action, setAction] = useState<"check" | "reset" | null>(null);
+  const [notice, setNotice] = useState("");
   const card = state.roleCard!;
+
+  const checkForNextGame = async () => {
+    setAction("check");
+    setNotice("");
+    const nextState = await onCheck();
+    if (nextState?.room.status === "lobby") return;
+    if (!nextState) setNotice("Could not check the lobby. Please try again.");
+    else setNotice("The host has not reset the lobby yet.");
+    setAction(null);
+  };
+
+  const resetLobby = async () => {
+    if (!window.confirm("Reset this lobby for another game? Everyone will keep their seat, but all current roles will be cleared.")) return;
+    setAction("reset");
+    setNotice("");
+    try {
+      await onReset();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Could not reset the lobby.");
+      setAction(null);
+    }
+  };
+
   return (
     <main className={`reveal-shell ${card.team}`}>
       <RoomHeader code={state.room.code} />
       <section className="reveal-stage">
-        {!revealed ? (
-          <div className="sealed-card">
-            <div className="seal"><Crown /></div>
-            <span className="section-kicker">For {state.player.name} only</span>
-            <h1>Your role is sealed</h1>
-            <p>Make sure no one else can see your screen before you reveal it.</p>
-            <Button className="gold-button" size="lg" onClick={() => setRevealed(true)}><Eye /> Reveal my role</Button>
+        <div className="reveal-stack">
+          {!revealed ? (
+            <div className="sealed-card">
+              <div className="seal"><Crown /></div>
+              <span className="section-kicker">For {state.player.name} only</span>
+              <h1>Your role is sealed</h1>
+              <p>Make sure no one else can see your screen before you reveal it.</p>
+              <Button className="gold-button" size="lg" onClick={() => setRevealed(true)}><Eye /> Reveal my role</Button>
+            </div>
+          ) : (
+            <div className="role-card">
+              <button className="hide-role" onClick={() => setRevealed(false)}><EyeOff /> Hide role</button>
+              <div className="alignment"><span>{card.team === "good" ? <Shield /> : <Swords />}</span>{card.team === "good" ? "Servant of Arthur" : "Minion of Mordred"}</div>
+              <p className="role-overline">You are</p>
+              <h1>{card.name}</h1>
+              <p className="role-description">{card.description}</p>
+              {card.intel.length > 0 ? (
+                <div className="intel-box"><span>{card.intelLabel}</span><div>{card.intel.map((name) => <strong key={name}>{name}</strong>)}</div></div>
+              ) : (
+                <div className="intel-box quiet"><span>Secret knowledge</span><p>You receive no names. Trust your instincts.</p></div>
+              )}
+              <div className="objective"><span>Your objective</span><p>{card.objective}</p></div>
+              <p className="role-warning"><EyeOff size={15} /> Keep this screen private. There is no narrator.</p>
+            </div>
+          )}
+          <div className="next-game-panel">
+            <div className="next-game-copy">
+              <strong>Ready for another game?</strong>
+              <span>{state.isHost ? "Reset the table when everyone is ready." : "Check after the host resets the table."}</span>
+            </div>
+            <div className="next-game-buttons">
+              {state.isHost && <Button className="gold-button" onClick={resetLobby} disabled={action !== null}><RotateCcw />{action === "reset" ? "Resetting…" : "Reset lobby"}</Button>}
+              {!state.isHost && <Button variant="outline" className="copy-button" onClick={checkForNextGame} disabled={action !== null}><RefreshCw />{action === "check" ? "Checking…" : "Check for next game"}</Button>}
+            </div>
+            {notice && <p className="next-game-notice" role="status">{notice}</p>}
           </div>
-        ) : (
-          <div className="role-card">
-            <button className="hide-role" onClick={() => setRevealed(false)}><EyeOff /> Hide role</button>
-            <div className="alignment"><span>{card.team === "good" ? <Shield /> : <Swords />}</span>{card.team === "good" ? "Servant of Arthur" : "Minion of Mordred"}</div>
-            <p className="role-overline">You are</p>
-            <h1>{card.name}</h1>
-            <p className="role-description">{card.description}</p>
-            {card.intel.length > 0 ? (
-              <div className="intel-box"><span>{card.intelLabel}</span><div>{card.intel.map((name) => <strong key={name}>{name}</strong>)}</div></div>
-            ) : (
-              <div className="intel-box quiet"><span>Secret knowledge</span><p>You receive no names. Trust your instincts.</p></div>
-            )}
-            <div className="objective"><span>Your objective</span><p>{card.objective}</p></div>
-            <p className="role-warning"><EyeOff size={15} /> Keep this screen private. There is no narrator.</p>
-          </div>
-        )}
+        </div>
       </section>
     </main>
   );
@@ -273,14 +319,25 @@ export default function Home() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!code || !tokens.player) return;
+    if (!code || !tokens.player) return null;
     try {
       const room = await jsonRequest<RoomState>(`/api/games/${code}`, { headers: { authorization: `Bearer ${tokens.player}`, "x-host-token": tokens.host } });
       setState(room);
       setError("");
+      return room;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the room.");
+      return null;
     }
+  }, [code, tokens]);
+
+  const resetLobby = useCallback(async () => {
+    const room = await jsonRequest<RoomState>(`/api/games/${code}/reset`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tokens.player}`, "x-host-token": tokens.host },
+    });
+    setState(room);
+    setError("");
   }, [code, tokens]);
 
   useEffect(() => {
@@ -333,6 +390,6 @@ export default function Home() {
   if (!tokens.player) return <Landing initialCode={initialCode} onEnter={enterRoom} />;
   if (error && !state) return <main className="loading-screen"><Mark /><p>{error}</p><Button variant="outline" onClick={() => { localStorage.removeItem(storageKey(code, "player")); localStorage.removeItem(storageKey(code, "host")); setTokens({ player: "", host: "" }); setError(""); }}>Join again</Button></main>;
   if (!state) return <main className="loading-screen"><Mark /><span>Finding your seat…</span></main>;
-  if (state.room.status === "assigned" && state.roleCard) return <RoleReveal state={state} />;
+  if (state.room.status === "assigned" && state.roleCard) return <RoleReveal state={state} onCheck={refresh} onReset={resetLobby} />;
   return <Lobby state={state} tokens={tokens} onRefresh={refresh} />;
 }

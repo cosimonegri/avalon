@@ -10,7 +10,8 @@ A narrator-free companion for assigning roles at the start of a game of *The Res
 - Assigns roles once using server-side cryptographic randomness.
 - Shows Merlin, Percival, Evil, and Oberon exactly the names their role is allowed to know.
 - Keeps role assignments out of lobby and other-player API responses.
-- Expires rooms six hours after creation.
+- Lets the host reset the same lobby for another game while everyone keeps their seat.
+- Expires rooms six hours after creation, renewed when the host resets the lobby.
 
 The private information follows the original [Avalon rulebook](https://cdn.1j1ju.com/medias/a6/dc/c1-the-resistance-avalon-rulebook.pdf): Merlin sees every Evil player except Mordred (including Oberon), Evil players know one another except Oberon, Oberon receives no names, and Percival sees Merlin plus Morgana when she is present without knowing which is which.
 
@@ -63,5 +64,6 @@ No Supabase project, database migration, or application environment variable is 
 - `POST /api/games/:code/join` — join a lobby and return a player token.
 - `GET /api/games/:code` — retrieve the lobby or the requesting player's private role card.
 - `POST /api/games/:code/start` — host-only, one-time role assignment.
+- `POST /api/games/:code/reset` — host-only, clear roles and reopen the same lobby.
 
 All API responses use `Cache-Control: no-store`. Tokens are held in each browser's local storage so refreshing a device restores its seat.
